@@ -26,9 +26,487 @@ yarn install
 
 运行到Android设备上
 
+##### 方式一
+
+在根项目的命令行执行下面命令即可
+
 ```bash
 yarn android
 ```
 
-## Android端项目目录结构分析
+##### 方式二
+
+现在根项目的命令行执行下面命令,把RN服务跑起来
+
+```bash
+npm run start
+```
+
+使用Android Studio打开android项目，然后运行即可
+
+运行后的效果如下
+
+![img.png](img/img.png ){:height="50%" width="50%"}
+
+## 启动流程分析
+
+Android端项目文件非常少，只有一个Application和一个Activity。
+
+### Application
+
+Application实现了ReactApplication接口，内部实现了getReactNativeHost方法，返回一个ReactNativeHost对象。
+
+```Kotlin
+package com.yzq.rn_project_analysis
+
+/**
+ * @description: 入口，实现了ReactApplication接口
+ * @author : yuzhiqiang
+ */
+
+class MainApplication : Application(), ReactApplication {
+
+    /**
+     * 创建ReactNativeHost，这里使用了默认的DefaultReactNativeHost
+     */
+    override val reactNativeHost: ReactNativeHost =
+        object : DefaultReactNativeHost(this) {
+            //获取已注册的ReactPackage列表
+            override fun getPackages(): List<ReactPackage> =
+                PackageList(this).packages.apply {
+                    // Packages that cannot be autolinked yet can be added manually here, for example:
+                    //用于添加不能自动链接的包，例如自定义的插件
+                    // add(MyReactNativePackage())
+                }
+
+            //获取JS入口文件名，对应index.js
+            override fun getJSMainModuleName(): String = "index"
+
+            //是否开启开发者支持
+            override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+
+            //是否开启新架构
+            override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+
+            //是否开启Hermes引擎
+            override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+        }
+
+    //获取ReactHost，这里使用了默认的DefaultReactHost
+    override val reactHost: ReactHost
+        get() = getDefaultReactHost(this.applicationContext, reactNativeHost)
+
+    override fun onCreate() {
+        super.onCreate()
+        //初始化SoLoader，用于加载so库
+        SoLoader.init(this, false)
+        if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+            // If you opted-in for the New Architecture, we load the native entry point for this app.
+            load()
+        }
+        //初始化Flipper，用于调试
+        ReactNativeFlipper.initializeFlipper(this, reactNativeHost.reactInstanceManager)
+    }
+}
+```
+
+### MainActivity
+
+MainActivity继承自ReactActivity，源码如下：
+
+```Kotlin
+package com.yzq.rn_project_analysis
+
+import com.facebook.react.ReactActivity
+import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
+import com.facebook.react.defaults.DefaultReactActivityDelegate
+
+/**
+ * @description: 承载React Native的Activity，继承自ReactActivity
+ * @author : yuzhiqiang
+ */
+
+class MainActivity : ReactActivity() {
+
+
+    /**
+     * 要加载的js组件名，对应index.js中的AppRegistry.registerComponent('RNProjectAnalysis', () => App);
+     * @return String
+     */
+    override fun getMainComponentName(): String = "RNProjectAnalysis"
+
+    /**
+     * 返回ReactActivityDelegate实例，这里使用了DefaultReactActivityDelegate，内部实现了ReactActivityDelegate接口
+     * @return ReactActivityDelegate
+     */
+    override fun createReactActivityDelegate(): ReactActivityDelegate =
+        DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+}
+
+```
+
+**getMainComponentName**
+
+* 该方法返回的字符串对应 index.js 中的 AppRegistry.registerComponent('RNProjectAnalysis', () => App);
+  中的第一个参数，即要加载的js组件名 *
+
+**createReactActivityDelegate**
+
+* createReactActivityDelegate 方法返回的 ReactActivityDelegate 实例，用于处理 React Native
+  的初始化和事件。这里创建了DefaultReactActivityDelegate*
+
+### ReactActivity
+
+上面说到了MainActivity继承了ReactActivity，来看一下ReactActivity的源码
+
+```Kotlin
+
+/**
+ * Base Activity for React Native applications.
+ */
+public abstract class ReactActivity extends AppCompatActivity
+        implements DefaultHardwareBackBtnHandler, PermissionAwareActivity {
+
+    private final ReactActivityDelegate mDelegate;
+
+    /**
+     * 在页面构造方法中调用了createReactActivityDelegate()方法，用于创建ReactActivityDelegate对象
+     */
+    protected ReactActivity() {
+        mDelegate = createReactActivityDelegate();
+    }
+
+    /**
+     * 在构造方法中调用了getMainComponentName()方法，用于获取JS端注册的主组件名称，子类可以重写该方法，返回自定义的主组件名称
+     *
+     * @return
+     */
+    protected @Nullable String getMainComponentName() {
+        return null;
+    }
+
+    /**
+     * 在构造方法中调用了createReactActivityDelegate()方法，用于创建ReactActivityDelegate对象，子类可以重写该方法，返回自定义的ReactActivityDelegate对象
+     *
+     * @return
+     */
+    protected ReactActivityDelegate createReactActivityDelegate() {
+        return new ReactActivityDelegate(this, getMainComponentName());
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // 调用了ReactActivityDelegate的onCreate()方法
+        mDelegate.onCreate(savedInstanceState);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 调用了ReactActivityDelegate的onPause()方法
+        mDelegate.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 调用了ReactActivityDelegate的onResume()方法
+        mDelegate.onResume();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 调用了ReactActivityDelegate的onDestroy()方法
+        mDelegate.onDestroy();
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        //
+        mDelegate.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // 调用了ReactActivityDelegate的onKeyDown()方法
+        return mDelegate.onKeyDown(keyCode, event) || super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        // 调用了ReactActivityDelegate的onKeyUp()方法
+        return mDelegate.onKeyUp(keyCode, event) || super.onKeyUp(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+        return mDelegate.onKeyLongPress(keyCode, event) || super.onKeyLongPress(keyCode, event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!mDelegate.onBackPressed()) {
+            super.onBackPressed();
+        }
+    }
+
+    @Override
+    public void invokeDefaultOnBackPressed() {
+        super.onBackPressed();
+    }
+
+    @Override
+    public void onNewIntent(Intent intent) {
+        if (!mDelegate.onNewIntent(intent)) {
+            super.onNewIntent(intent);
+        }
+    }
+
+    @Override
+    public void requestPermissions(
+            String[] permissions, int requestCode, PermissionListener listener) {
+        // 调用了ReactActivityDelegate的requestPermissions()方法
+        mDelegate.requestPermissions(permissions, requestCode, listener);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        mDelegate.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        mDelegate.onWindowFocusChanged(hasFocus);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        mDelegate.onConfigurationChanged(newConfig);
+    }
+
+    /**
+     * 获取ReactActivityDelegate对象
+     *
+     * @return
+     */
+    protected final ReactNativeHost getReactNativeHost() {
+        return mDelegate.getReactNativeHost();
+    }
+
+    /**
+     * 获取ReactInstanceManager对象
+     *
+     * @return
+     */
+    protected final ReactInstanceManager getReactInstanceManager() {
+        return mDelegate.getReactInstanceManager();
+    }
+
+    /**
+     * 加载JS Bundle
+     *
+     * @param appKey
+     */
+    protected final void loadApp(String appKey) {
+        mDelegate.loadApp(appKey);
+    }
+}
+```
+
+* ReactActivity继承自AppCompatActivity，实现了DefaultHardwareBackBtnHandler和PermissionAwareActivity接口
+* 在构造方法中调用了createReactActivityDelegate()方法，用于创建ReactActivityDelegate对象
+* getMainComponentName()方法，用于获取JS端注册的主组件名称，子类可以重写该方法，返回自定义的主组件名称
+* createReactActivityDelegate()方法，用于创建ReactActivityDelegate对象，子类可以重写该方法，返回自定义的ReactActivityDelegate对象
+* 在Activity的各个生命周期中调用了ReactActivityDelegate中对应的方法
+* 在Activity的各个事件中调用了ReactActivityDelegate中对应的方法
+* loadApp方法，用于加载JS组件
+* getReactNativeHost方法，用于获取ReactNativeHost对象
+* getReactInstanceManager方法，用于获取ReactInstanceManager对象
+
+### DefaultReactActivityDelegate
+
+还记得在MainActivity中重写了createReactActivityDelegate方法，返回了一个DefaultReactActivityDelegate对象吧， 下面接着看一下
+DefaultReactActivityDelegate 的实现
+
+```Kotlin
+
+package com.facebook.react.defaults
+
+import android.os.Bundle
+import com.facebook.react.ReactActivity
+import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.ReactRootView
+
+/**
+ * A utility class that allows you to simplify the setup of a [ReactActivityDelegate] for new apps
+ * in Open Source.
+ *
+ * Specifically, with this class you can simply control if Fabric is enabled for an Activity using
+ * the boolean flag in the constructor.
+ *
+ * @param fabricEnabled Whether Fabric should be enabled for the RootView of this Activity.
+ */
+open class DefaultReactActivityDelegate(
+    activity: ReactActivity,
+    mainComponentName: String,
+    private val fabricEnabled: Boolean = false,
+) : ReactActivityDelegate(activity, mainComponentName) {
+
+  @Deprecated(
+      message =
+          "Creating DefaultReactActivityDelegate with both fabricEnabled and concurrentReactEnabled is deprecated. Please pass only one boolean value that will be used for both flags",
+      level = DeprecationLevel.WARNING,
+      replaceWith =
+          ReplaceWith("DefaultReactActivityDelegate(activity, mainComponentName, fabricEnabled)"))
+  constructor(
+      activity: ReactActivity,
+      mainComponentName: String,
+      fabricEnabled: Boolean,
+      @Suppress("UNUSED_PARAMETER") concurrentReactEnabled: Boolean,
+  ) : this(activity, mainComponentName, fabricEnabled)
+
+  override fun isFabricEnabled(): Boolean = fabricEnabled
+
+  override fun createRootView(): ReactRootView =
+      ReactRootView(context).apply { setIsFabric(fabricEnabled) }
+
+  override fun createRootView(bundle: Bundle?): ReactRootView =
+      ReactRootView(context).apply { setIsFabric(fabricEnabled) }
+}
+
+
+```
+
+* DefaultReactActivityDelegate继承自ReactActivityDelegate，实现了ReactActivityDelegate接口
+* 重写了isFabricEnabled方法，用于判断是否开启Fabric引擎
+* 重写了createRootView方法，用于创建ReactRootView对象，然后调用了ReactRootView的setIsFabric方法，用于设置是否开启Fabric引擎。
+
+到这里，ReactActivity中的createReactActivityDelegate方法就执行完毕了，此时，ReactActivity中的mDelegate属性就是一个DefaultReactActivityDelegate对象，且ReactRootView对象已经创建好了。
+
+随后，在ReactActivity的onCreate方法中会调用创建好的ReactActivityDelegate中的onCreate方法
+
+```Kotlin
+    protected void onCreate(Bundle savedInstanceState) {
+        // 获取要加载的JS端注册的主组件名称
+        String mainComponentName = getMainComponentName();
+        // 获取要传递给JS端的启动参数
+        final Bundle launchOptions = composeLaunchOptions();
+        // 创建ReactDelegate对象
+        if (ReactFeatureFlags.enableBridgelessArchitecture) {
+            /**
+             * 开启了 Bridgeless 架构时
+             * 传入的参数分别为：
+             * 1. Activity对象
+             * 2. ReactHost接口实现类对象，用于承载React实例的容器，一般为Activity对象或Fragment
+             * 3. JS端注册的主组件名称
+             * 4. 启动参数
+             *
+             * 由此可见，启动了Bridgeless架构后，ReactDelegate的构造方法中不再需要App应用级别的ReactNativeHost对象，更改为粒度更小的页面级别的ReactHost对象
+             * 原因是：在传统的 Bridge 架构中，通信是通过 JavaScript 和原生之间的桥梁来进行的，而这个桥梁是由应用级别的 ReactNativeHost 管理的。
+             * 这种方式需要进行消息的序列化、传递、反序列化，可能引入一些性能开销。
+             * 而在 Bridgeless 架构中，由于避开了桥梁的使用，JavaScript 和原生代码可以更直接地进行通信，因此不再需要应用级别的 ReactNativeHost 来管理桥梁。
+             * 相反，可以在页面级别使用更轻量级的 ReactHost 来管理 React Native 实例，降低了通信的开销，提高了性能。
+             * 这种调整是为了在 Bridgeless 架构中更灵活地管理 React Native 实例，使其更适应于页面级别的使用。
+             */
+            mReactDelegate =
+                    new ReactDelegate(getPlainActivity(), getReactHost(), mainComponentName, launchOptions);
+        } else {
+            /**
+             * 未开启Bridgeless架构时
+             * 传入的参数分别为：
+             * 1. Activity对象
+             * 2. ReactNativeHost接口实现类对象，是应用级别的React容器，负责管理整个应用程序React实例的创建，销毁，和配置。
+             * 3. JS端注册的主组件名称
+             * 4. 启动参数
+             */
+            mReactDelegate =
+                    new ReactDelegate(
+                            getPlainActivity(), getReactNativeHost(), mainComponentName, launchOptions) {
+                        @Override
+                        protected ReactRootView createRootView() {
+                            return ReactActivityDelegate.this.createRootView(launchOptions);
+                        }
+                    };
+        }
+        if (mainComponentName != null) {
+            // 加载JS端注册的主组件
+            loadApp(mainComponentName);
+        }
+    }
+
+```
+
+在onCreate方法中，主要步骤如下：
+
+* 获取了JS入口文件名
+* 调用了composeLaunchOptions方法，用于创建Bundle对象
+* 调用了ReactDelegate的构造方法，创建了ReactDelegate对象
+* 调用了loadApp方法，用于加载JS组件。
+
+看一下 loadApp 方法
+
+```Kotlin
+    protected void loadApp(String appKey) {
+        //调用ReactDelegate的loadApp方法
+        mReactDelegate.loadApp(appKey);
+        /**
+         * 将ReactRootView添加到Activity的ContentView中
+         * 如果开启了Bridgeless架构，getReactRootView()方法返回的是ReactSurfaceView对象，强转为 ReactRootView 类型
+         * 如果未开启Bridgeless架构，获取的就是ReactRootView
+         *
+         */
+        getPlainActivity().setContentView(mReactDelegate.getReactRootView());
+    }
+  
+```
+
+* 调用了ReactDelegate的loadApp方法
+
+    * ReactDelegate中的loadApp方法源码如下
+  
+      ```Kotlin
+              public void loadApp(String appKey) {
+                // With Bridgeless enabled, create and start the surface
+                if (ReactFeatureFlags.enableBridgelessArchitecture) {
+                //启用了Bridgeless架构，创建ReactSurface容器来作为React组件的容器
+                    if (mReactSurface == null) {
+                        // Create a ReactSurface
+                        mReactSurface = mReactHost.createSurface(mActivity, appKey, mLaunchOptions);
+                        // Set main Activity's content view
+                        //设置Activity的内容视图为ReactSurface，本质上是ReactSurfaceView
+                        mActivity.setContentView(mReactSurface.getView());
+                    }
+                    //启动React应用，渲染React组件
+                    mReactSurface.start();
+                } else {
+                    if (mReactRootView != null) {
+                        throw new IllegalStateException("Cannot loadApp while app is already running.");
+                    }
+                    //创建ReactRootView对象
+                    mReactRootView = createRootView();
+                    //启动React应用，渲染React组件
+                    mReactRootView.startReactApplication(
+                            getReactNativeHost().getReactInstanceManager(), appKey, mLaunchOptions);
+                }
+            }
+
+      ```
+        * 如果开启了Bridgeless架构，则调用了ReactHost的createSurface方法，创建了ReactSurface对象，然后调用了ReactSurface的start方法，启动React应用。
+        * 如果没有开启Bridgeless架构，则调用了createRootView方法，创建了ReactRootView对象，然后调用了ReactRootView的startReactApplication方法，启动React应用。
+     
+
+* 随后调用了getReactRootView方法获取之前创建好的ReactRootView，最后调用了setContentView方法，将ReactRootView设置为Activity的内容视图。
+
+至此，React Native加载完毕并显示到了页面上。
+
+
+
+---
 
