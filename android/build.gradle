@@ -13,9 +13,10 @@ buildscript {
     }
     dependencies {
         classpath("com.android.tools.build:gradle")
+        //RN插件
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
     }
 }
-
+//应用了一个叫做com.facebook.react.rootproject的插件
 apply plugin: "com.facebook.react.rootproject"

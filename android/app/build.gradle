@@ -1,5 +1,6 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
+//应用了一个叫做com.facebook.react的插件
 apply plugin: "com.facebook.react"
 
 /**
@@ -105,6 +106,7 @@ android {
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
+    //这里react-native版本是由react-native-gradle-plugin设置的
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.react:flipper-integration")
 
@@ -114,5 +116,8 @@ dependencies {
         implementation jscFlavor
     }
 }
+//应用了一个脚本文件
+//apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle");
+apply from: file("../native_modules.gradle");
 
-apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
+applyNativeModulesAppBuildGradle(project)
