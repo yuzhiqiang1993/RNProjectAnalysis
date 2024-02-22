@@ -4,6 +4,8 @@ import org.apache.tools.ant.taskdefs.condition.Os
 
 def generatedFileName = "PackageList.java"
 def generatedFilePackage = "com.facebook.react"
+
+//用来生成 PackageList.java 的模版
 def generatedFileContentsTemplate = """
 package $generatedFilePackage;
 
@@ -174,25 +176,29 @@ class ReactNativeModules {
     }
 
     /**
-     * Include the react native modules android projects and specify their project directory
-     */
+     * Include the react native modules android projects and specify their project directory*/
     void addReactNativeModuleProjects(DefaultSettings defaultSettings) {
         println("addReactNativeModuleProjects reactNativeModules: ${reactNativeModules}")
         reactNativeModules.forEach { reactNativeModule ->
             String nameCleansed = reactNativeModule["nameCleansed"]
             String androidSourceDir = reactNativeModule["androidSourceDir"]
+
+            System.out.println("nameCleansed: ${nameCleansed}, androidSourceDir: ${androidSourceDir}")
             defaultSettings.include(":${nameCleansed}")
             defaultSettings.project(":${nameCleansed}").projectDir = new File("${androidSourceDir}")
         }
     }
 
+
     /**
-     * Adds the react native modules as dependencies to the users `app` project
+     * 添加react-native模块依赖到app项目
+     * @param appProject
      */
     void addReactNativeModuleDependencies(Project appProject) {
         reactNativeModules.forEach { reactNativeModule ->
             def nameCleansed = reactNativeModule["nameCleansed"]
             def dependencyConfiguration = reactNativeModule["dependencyConfiguration"]
+            System.out.println("nameCleansed: ${nameCleansed}, dependencyConfiguration: ${dependencyConfiguration}")
             appProject.dependencies {
                 if (reactNativeModulesBuildVariants.containsKey(nameCleansed)) {
                     reactNativeModulesBuildVariants
@@ -201,6 +207,7 @@ class ReactNativeModules {
                                 if (dependencyConfiguration != null) {
                                     "${buildVariant}${dependencyConfiguration}"
                                 } else {
+                                    System.out.println("" + nameCleansed + "${buildVariant}Implementation project(path: \":${nameCleansed}\")")
                                     "${buildVariant}Implementation" project(path: ":${nameCleansed}")
                                 }
                             }
@@ -208,6 +215,8 @@ class ReactNativeModules {
                     if (dependencyConfiguration != null) {
                         "${dependencyConfiguration}"
                     } else {
+                        //// 把依赖添加到app模块里，相当于 implementation project(path: ":xxx")
+                        System.out.println("添加依赖：" + nameCleansed + " implementation project(path: \":${nameCleansed}\")")
                         implementation project(path: ":${nameCleansed}")
                     }
                 }
@@ -215,9 +224,9 @@ class ReactNativeModules {
         }
     }
 
+
     /**
-     * Code-gen a java file with all the detected ReactNativePackage instances automatically added
-     *
+     * 通过上面定义的模版生成一个PackageList.java文件，替换导包和实例
      * @param outputDir
      * @param generatedFileName
      * @param generatedFileContentsTemplate
@@ -229,7 +238,14 @@ class ReactNativeModules {
         String packageImports = ""
         String packageClassInstances = ""
 
+        System.out.println("outputDir: ${outputDir}, generatedFileName: ${generatedFileName}, generatedFileContentsTemplate: ${generatedFileContentsTemplate}")
+        System.out.println("packages: ${packages}")
+
         if (packages.size() > 0) {
+
+            /**
+             * 针对BuildConfig和R的引用，进行替换，确保使用的是正确的项目路径和包名
+             */
             def interpolateDynamicValues = {
                 it
                 // Before adding the package replacement mechanism,
@@ -250,30 +266,40 @@ class ReactNativeModules {
                 // and "BuildConfig" that has FQDN reference:
                 //  - Module.configure(com.acme.BuildConfig);
                 //    ^ hence excluding . before the match.
-                        .replaceAll(~/([^.\w])(BuildConfig|R)([^\w])/, {
-                            wholeString, prefix, className, suffix ->
-                                "${prefix}${packageName}.${className}${suffix}"
+                        .replaceAll(~/([^.\w])(BuildConfig|R)([^\w])/, { wholeString, prefix, className, suffix -> "${prefix}${packageName}.${className}${suffix}"
                         })
             }
+
+            //拼接导包
             packageImports = packages.collect {
                 "// ${it.name}\n${interpolateDynamicValues(it.packageImportPath)}"
             }.join('\n')
+
+            System.out.println("""packageImports: ${packageImports}""")
+
+            //拼接实例
             packageClassInstances = ",\n      " + packages.collect {
                 interpolateDynamicValues(it.packageInstance)
             }.join(",\n      ")
+
+            System.out.println("""packageClassInstances: ${packageClassInstances}""")
         }
 
         String generatedFileContents = generatedFileContentsTemplate
                 .replace("{{ packageImports }}", packageImports)
                 .replace("{{ packageClassInstances }}", packageClassInstances)
 
+        System.out.println("generatedFileContents: ${generatedFileContents}")
+
+        //输出文件
         outputDir.mkdirs()
         final FileTreeBuilder treeBuilder = new FileTreeBuilder(outputDir)
-        treeBuilder.file(generatedFileName).newWriter().withWriter { w ->
-            w << generatedFileContents
+        treeBuilder.file(generatedFileName).newWriter().withWriter { w -> w << generatedFileContents
         }
     }
 
+
+    //生成cmake文件
     void generateCmakeFile(File outputDir, String generatedFileName, String generatedFileContentsTemplate) {
         ArrayList<HashMap<String, String>> packages = this.reactNativeModules
         String packageName = this.packageName
@@ -302,11 +328,11 @@ class ReactNativeModules {
 
         outputDir.mkdirs()
         final FileTreeBuilder treeBuilder = new FileTreeBuilder(outputDir)
-        treeBuilder.file(generatedFileName).newWriter().withWriter { w ->
-            w << generatedFileContents
+        treeBuilder.file(generatedFileName).newWriter().withWriter { w -> w << generatedFileContents
         }
     }
 
+    //生成rncli.cpp文件
     void generateRncliCpp(File outputDir, String generatedFileName, String generatedFileContentsTemplate) {
         ArrayList<HashMap<String, String>> packages = this.reactNativeModules
         ArrayList<String> unstable_reactLegacyComponentNames = this.unstable_reactLegacyComponentNames
@@ -365,25 +391,23 @@ class ReactNativeModules {
 
         outputDir.mkdirs()
         final FileTreeBuilder treeBuilder = new FileTreeBuilder(outputDir)
-        treeBuilder.file(generatedFileName).newWriter().withWriter { w ->
-            w << generatedFileContents
+        treeBuilder.file(generatedFileName).newWriter().withWriter { w -> w << generatedFileContents
         }
     }
 
+    //生成rncli.h文件
     void generateRncliH(File outputDir, String generatedFileName, String generatedFileContentsTemplate) {
         String generatedFileContents = generatedFileContentsTemplate
 
         outputDir.mkdirs()
         final FileTreeBuilder treeBuilder = new FileTreeBuilder(outputDir)
-        treeBuilder.file(generatedFileName).newWriter().withWriter { w ->
-            w << generatedFileContents
+        treeBuilder.file(generatedFileName).newWriter().withWriter { w -> w << generatedFileContents
         }
     }
 
     /**
      * Runs a specified command using Runtime exec() in a specified directory.
-     * Throws when the command result is empty.
-     */
+     * Throws when the command result is empty.*/
     /**
      * 执行命令,获取结果
      * @param command
@@ -396,8 +420,7 @@ class ReactNativeModules {
             println("getCommandOutput command: ${command}")
             def output = ""
             /**
-             * command: [node, xxx/node_modules/@react-native-community/cli/build/bin.js, config]
-             */
+             * command: [node, xxx/node_modules/@react-native-community/cli/build/bin.js, config]*/
             def cmdProcess = Runtime.getRuntime().exec(command, null, directory)
             def bufferedReader = new BufferedReader(new InputStreamReader(cmdProcess.getInputStream()))
             def buff = ""
@@ -430,7 +453,7 @@ class ReactNativeModules {
      * @return
      */
     ArrayList<HashMap<String, String>> getReactNativeConfig() {
-        //如果已经解析过了，就直接返回
+        //如果已经获取过配置，直接返回
         if (this.reactNativeModules != null) return this.reactNativeModules
 
         //存储react-native模块
@@ -439,17 +462,16 @@ class ReactNativeModules {
         HashMap<String, ArrayList> reactNativeModulesBuildVariants = new HashMap<String, ArrayList>()
 
         /**
-         * 执行一段脚本，获取react-native-cli的路径
-         * 最终获取的结果：xxx/node_modules/@react-native-community/cli/build/bin.js
-         */
+         * 执行一段脚本，获取react-native-cli的路径,实际上如果我们需要自己调试，直接返回本机的一个绝对路径即可。
+         * 最终获取的结果：xxx/node_modules/@react-native-community/cli/build/bin.js*/
         def cliResolveScript = "try {console.log(require('@react-native-community/cli').bin);} catch (e) {console.log(require('react-native/cli').bin);}"
         String[] nodeCommand = ["node", "-e", cliResolveScript]
         def cliPath = this.getCommandOutput(nodeCommand, this.root)
         println("cliPath: ${cliPath}")
         /**
          * 执行 node xxx/node_modules/@react-native-community/cli/build/bin.js config  获取rn配置的结果
-         * 这个node脚本比较复杂，会调用一些其他的脚本，最终会返回一个json字符串
-         */
+         * 这个node命令执行的逻辑比较复杂，内部的流程很多，大致上就是调用了react-native-cli的config命令，从而获取到了RN的版本，配置，依赖库等关键信息
+         **/
         String[] reactNativeConfigCommand = ["node", cliPath, "config"]
         def reactNativeConfigOutput = this.getCommandOutput(reactNativeConfigCommand, this.root)
         println("reactNativeConfigOutput: ${reactNativeConfigOutput}")
@@ -461,6 +483,8 @@ class ReactNativeModules {
         } catch (Exception exception) {
             throw new Exception("Calling `${reactNativeConfigCommand}` finished with an exception. Error message: ${exception.toString()}. Output: ${reactNativeConfigOutput}");
         }
+
+        println("json: ${json}")
 
         //获取react-native的依赖模块
         def dependencies = json["dependencies"]
@@ -474,13 +498,15 @@ class ReactNativeModules {
         }
 
         def engine = new groovy.text.SimpleTemplateEngine()
-
+        //处理react-native的依赖模块
         dependencies.each { name, value ->
             //获取react-native模块的android配置
             def platformsConfig = value["platforms"];
+            println("platformsConfig: ${platformsConfig}")
+
             //获取android配置
             def androidConfig = platformsConfig["android"]
-
+            println("androidConfig: ${androidConfig}")
             if (androidConfig != null && androidConfig["sourceDir"] != null) {
                 this.logger.info("${LOG_PREFIX}Automatically adding native module '${name}'")
 
@@ -515,6 +541,7 @@ class ReactNativeModules {
             }
         }
 
+        //返回数据
         return [reactNativeModules, reactNativeModulesBuildVariants, json["project"]["android"], reactNativeVersion];
     }
 }
@@ -548,24 +575,28 @@ def reactNativeVersionRequireNewArchEnabled(autoModules) {
  * ------------------------ */
 
 //该方法会在settings.gradle中被调用，作用是把RN需要的三方库include到settings.gradle中
-ext.applyNativeModulesSettingsGradle = { DefaultSettings defaultSettings ->
-    autoModules.addReactNativeModuleProjects(defaultSettings)
+ext.applyNativeModulesSettingsGradle = { DefaultSettings defaultSettings -> autoModules.addReactNativeModuleProjects(defaultSettings)
 }
 
 
 ext.applyNativeModulesAppBuildGradle = { Project project ->
+    //添加依赖到app项目
     autoModules.addReactNativeModuleDependencies(project)
 
     def generatedSrcDir = new File(buildDir, "generated/rncli/src/main/java")
     def generatedCodeDir = new File(generatedSrcDir, generatedFilePackage.replace('.', '/'))
     def generatedJniDir = new File(buildDir, "generated/rncli/src/main/jni")
+    System.out.println("\n")
+    System.out.println("生成代码")
 
+    //创建一个任务，生成PackageList.java文件
     task generatePackageList {
         doLast {
             autoModules.generatePackagesFile(generatedCodeDir, generatedFileName, generatedFileContentsTemplate)
         }
     }
 
+    //创建一个任务，生成cmake文件
     task generateNewArchitectureFiles {
         doLast {
             autoModules.generateCmakeFile(generatedJniDir, "Android-rncli.cmake", cmakeTemplate)
@@ -574,13 +605,16 @@ ext.applyNativeModulesAppBuildGradle = { Project project ->
         }
     }
 
+    //在执行preBuild任务之前，先执行generatePackageList任务
     preBuild.dependsOn generatePackageList
-    def isNewArchEnabled = (project.hasProperty("newArchEnabled") && project.newArchEnabled == "true") ||
-            reactNativeVersionRequireNewArchEnabled(autoModules)
+
+    //如果使用了新架构，那么在执行preBuild任务之前，先执行generateNewArchitectureFiles任务
+    def isNewArchEnabled = (project.hasProperty("newArchEnabled") && project.newArchEnabled == "true") || reactNativeVersionRequireNewArchEnabled(autoModules)
     if (isNewArchEnabled) {
         preBuild.dependsOn generateNewArchitectureFiles
     }
 
+    //添加生成的代码到app项目
     android {
         sourceSets {
             main {
