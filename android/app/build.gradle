@@ -117,7 +117,7 @@ dependencies {
     }
 }
 //应用了一个脚本文件
-//apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle");
-apply from: file("../native_modules.gradle");
+apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle");
+//apply from: file("../native_modules.gradle");
 
 applyNativeModulesAppBuildGradle(project)
